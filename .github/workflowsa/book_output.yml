@@ -1,0 +1,72 @@
+name: Lint & Test
+on: [push]
+jobs:
+  rspec:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: mysql:5.7
+        env:
+          MYSQL_USER: root
+          MYSQL_ROOT_PASSWORD:
+    container:
+      image: ruby:2.7.2
+      env:
+        RAILS_ENV: test
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/cache@v1
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gem-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gem-
+      - uses: actions/cache@v1
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+      - name: Set up yarn and node
+        run: |
+          curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
+          echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+          curl -sL https://deb.nodesource.com/setup_12.x | bash -
+          apt install -y yarn nodejs
+      - name: bundle install
+        run: |
+          gem install bundler
+          bundle install --path vendor/bundle --quiet --jobs 4 --retry 3
+      - name: yarn install
+        run: yarn install --check-files
+      - name: setup migrate
+        run: |
+          cp config/database.yml.ci config/database.yml
+          bundle exec rails db:create RAILS_ENV=test
+          bundle exec rails db:migrate RAILS_ENV=test
+      - name: run rspec
+        run: bundle exec rspec
+  rubocop:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ruby:2.7.2
+      env:
+        RAILS_ENV: test
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/cache@v1
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gem-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gem-
+      - name: bundle install
+        run: |
+          gem install bundler
+          bundle install --path vendor/bundle --quiet --jobs 4 --retry 3
+      - name: run rubocop
+        run: bundle exec rubocop
